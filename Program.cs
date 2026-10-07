@@ -1,8 +1,23 @@
+using Microsoft.EntityFrameworkCore;
 using StackMatch.Components;
+using StackMatch.Data;
+using StackMatch.Entities;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+// Configure EF Core + Identity
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("StackMatchConnectionString"))); //?? "Server=(localdb)\\mssqllocaldb;Database=StackMatchDb;Trusted_Connection=True;MultipleActiveResultSets=true"));
+
+builder.Services.AddDefaultIdentity<User>(options =>
+    {
+        options.SignIn.RequireConfirmedAccount = false;
+    })
+    .AddEntityFrameworkStores<ApplicationDbContext>();
+
+builder.Services.AddRazorPages();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -20,8 +35,14 @@ app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+// Identity UI (login/register) endpoints
+app.MapRazorPages();
 
 app.Run();
