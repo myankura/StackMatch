@@ -2,47 +2,100 @@ using Microsoft.EntityFrameworkCore;
 using StackMatch.Components;
 using StackMatch.Data;
 using StackMatch.Entities;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+//Initialize a bootstrap logger immediately so early startup errors are caught
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
-// Add services to the container.
-// Configure EF Core + Identity
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("StackMatchConnectionString"))); //?? "Server=(localdb)\\mssqllocaldb;Database=StackMatchDb;Trusted_Connection=True;MultipleActiveResultSets=true"));
+try
+{
+    var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDefaultIdentity<User>(options =>
+    // Load environment-specific configuration
+
+    // Configure Serilog from configuration
+    Log.Logger = new LoggerConfiguration()
+        .ReadFrom.Configuration(builder.Configuration)
+        .CreateLogger();
+
+    builder.Host.UseSerilog();
+
+    var envName = builder.Environment.EnvironmentName;
+    Log.Information("Serilog initialized successfully using appsettings.{Env}.json", envName);
+
+    // Resolve connection string (prefer environment variable for local development)
+    var connectionString = Environment.GetEnvironmentVariable("LocalDevConnectionString");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        Log.Error("Program.cs - Failed to retrieve connection string using environmental variable.");
+        connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    }
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        Log.Fatal("Program.cs - Failed to retrieve a database connection string from environment variables or configuration");
+    }
+
+    // Add services to the container.
+    // Configure EF Core + Identity
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlServer(connectionString));
+
+    builder.Services.AddDefaultIdentity<User>(options =>
     {
         options.SignIn.RequireConfirmedAccount = false;
     })
     .AddEntityFrameworkStores<ApplicationDbContext>();
 
-builder.Services.AddRazorPages();
+    builder.Services.AddRazorPages();
+    builder.Services.AddRazorComponents()
+        .AddInteractiveServerComponents();
 
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    // Build the app
+    var app = builder.Build();
 
-var app = builder.Build();
+    // Verify DB connectivity early and log result
+    var testResult = await DbConnectionStringTest.TestAsync(connectionString);
+    if (!testResult.Success)
+    {
+        Log.Error("Program.cs - DB connection test failed: {ErrorMessage}", testResult.ErrorMessage);
+        return;
+    }
+    else
+    {
+        Log.Information("Program.cs - DB Connection test was successful!");
+    }
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    // Configure the HTTP request pipeline.
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        app.UseHsts();
+    }
+
+    app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+    app.UseHttpsRedirection();
+
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UseAntiforgery();
+
+    app.MapStaticAssets();
+
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
+    // Identity UI (login/register) endpoints
+    app.MapRazorPages();
+
+    app.Run();
 }
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
-
-app.UseAntiforgery();
-
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapStaticAssets();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
-// Identity UI (login/register) endpoints
-app.MapRazorPages();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Error("Program.cs - An error occurred while running the application. Error: {ErrorMessage}", ex.Message);
+}
+finally
+{
+    Log.CloseAndFlush();
+}
