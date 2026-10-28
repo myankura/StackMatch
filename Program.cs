@@ -56,18 +56,6 @@ try
     // Build the app
     var app = builder.Build();
 
-    // Verify DB connectivity early and log result
-    var testResult = await DbConnectionStringTest.TestAsync(connectionString);
-    if (!testResult.Success)
-    {
-        Log.Error("Program.cs - DB connection test failed: {ErrorMessage}", testResult.ErrorMessage);
-        return;
-    }
-    else
-    {
-        Log.Information("Program.cs - DB Connection test was successful!");
-    }
-
     // Configure the HTTP request pipeline.
     if (!app.Environment.IsDevelopment())
     {

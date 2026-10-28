@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="../StackMatch.Tests/StackMatch.Tests.csproj" Id="01d8501b-805d-4b01-ad1e-89d6c2b095b6" />
   <Project Path="StackMatch.csproj" />
 </Solution>
